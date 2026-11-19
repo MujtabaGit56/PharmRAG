@@ -1,0 +1,6 @@
+faiss-cpu
+google-generativeai
+numpy
+streamlit
+torch
+transformers

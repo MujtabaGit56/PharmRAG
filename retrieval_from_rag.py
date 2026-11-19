@@ -17,7 +17,11 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 MODEL_NAME = "aleynahukmet/bge-medical-small-en-v1.5"
 RERANKER_NAME = "dranreb1660/medimaven-reranker-bge-cross-encoder"
 
-EMB_DIR = r"C:\Users\mujta\Desktop\Project Machine Learning\PharmRAG\Project-Files\Attempt 6\Misc\embeddings\bge-medical"
+# Folder with the prebuilt index files. Override with the PHARMRAG_EMB_DIR environment variable.
+EMB_DIR = os.environ.get(
+    "PHARMRAG_EMB_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "embeddings", "bge-medical"),
+)
 EMB_FILE = os.path.join(EMB_DIR, "embeddings-bge-medical-final-800.npy")
 META_FILE = os.path.join(EMB_DIR, "metadata-bge-medical-final-800.jsonl")
 INDEX_FILE = os.path.join(EMB_DIR, "index-faiss-ip.bin")
@@ -29,7 +33,10 @@ INDEX_FILE = os.path.join(EMB_DIR, "index-faiss-ip.bin")
 # MODEL_NAME = "BAAI/bge-small-en-v1.5"
 # RERANKER_NAME = "dranreb1660/medimaven-reranker-bge-cross-encoder"
 #
-# EMB_DIR = r"C:\Users\mujta\Desktop\Project Machine Learning\PharmRAG\Project-Files\Attempt 6\Misc\embeddings\bge-general"
+# EMB_DIR = os.environ.get(
+#     "PHARMRAG_EMB_DIR",
+#     os.path.join(os.path.dirname(os.path.abspath(__file__)), "embeddings", "bge-general"),
+# )
 # EMB_FILE = os.path.join(EMB_DIR, "embeddings-bge-general-final-800.npy")
 # META_FILE = os.path.join(EMB_DIR, "metadata-bge-general-final-800.jsonl")
 # INDEX_FILE = os.path.join(EMB_DIR, "index-faiss-ip.bin")
