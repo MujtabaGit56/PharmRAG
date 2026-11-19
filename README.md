@@ -59,18 +59,18 @@ flowchart LR
 
 - **Source:** [OpenFDA drug label dataset](https://open.fda.gov/apis/drug/label/)
 - **Scale:** ~100K drug labels, split into section-aware chunks and indexed with FAISS (inner-product similarity)
-- **Prebuilt files** (place them in `embeddings/bge-medical/`):
+- **Index files** the code expects in `embeddings/bge-medical/`:
   - `embeddings-bge-medical-final-800.npy`: chunk embeddings
   - `metadata-bge-medical-final-800.jsonl`: chunk text, drug name and label section for each vector
   - `index-faiss-ip.bin`: FAISS index
 
-The prebuilt files are too large for the repository. Download them from the [latest release](https://github.com/MujtabaGit56/PharmRAG/releases).
+The index files are not included in this repository because of their size.
 
 ---
 
 ## Evaluation
 
-PharmRAG was evaluated on 150 consumer-style medication questions (`best-150-questions.txt`), comparing three systems:
+PharmRAG was evaluated on 150 consumer-style medication questions, comparing three systems:
 
 1. Gemini with **no retrieval** (ungrounded baseline)
 2. RAG with **general** embeddings (`bge-small`)
@@ -80,17 +80,7 @@ Answers were scored with an **LLM-as-judge rubric** (factuality, safety coverage
 
 **Result:** the medical-embedding pipeline outperformed both the general-embedding pipeline and the ungrounded baseline on every criterion.
 
-<!--
-Add the score table here, for example:
-
-| System | Factuality | Safety coverage | Clarity | ROUGE-L |
-|---|---|---|---|---|
-| Gemini, no retrieval | | | | |
-| RAG + bge-small | | | | |
-| RAG + bge-medical | | | | |
--->
-
-To reproduce, run `python evaluation.py`. It writes every generated answer to `150-rag-answers.json` for scoring.
+`evaluation.py` reads the questions from `best-150-questions.txt` (one per line) and writes every generated answer to `150-rag-answers.json` for scoring.
 
 ### Typical latency
 
@@ -109,7 +99,7 @@ To reproduce, run `python evaluation.py`. It writes every generated answer to `1
 
 - Python 3.10+
 - A [Google Gemini API key](https://aistudio.google.com/app/apikey)
-- The prebuilt index files (see [Data](#data))
+- The index files (see [Data](#data))
 
 ### Install
 
@@ -161,9 +151,8 @@ PharmRAG/
 ├── llm_inference.py          # grounded prompt + Gemini generation (CLI)
 ├── user_interface.py         # Streamlit app
 ├── evaluation.py             # 150-question evaluation run
-├── best-150-questions.txt    # evaluation questions
 ├── embeddings/
-│   └── bge-medical/          # prebuilt index files (download separately)
+│   └── bge-medical/          # index files (not included)
 ├── requirements.txt
 └── README.md
 ```
