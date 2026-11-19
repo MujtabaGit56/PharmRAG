@@ -8,7 +8,7 @@ import llm_inference as llm_mod
 from drug_detection import detect_drug_from_query_robust
 from difflib import SequenceMatcher
 
-QUESTIONS_FILE = r"C:best-150-questions.txt"
+QUESTIONS_FILE = "best-150-questions.txt"
 OUTPUT_FILE = "150-rag-answers.json"
 
 TOP_K_REFERENCE = 2  # Number of top retrieved chunks to store

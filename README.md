@@ -1,459 +1,197 @@
 # PharmRAG
-Retrieval-Augmented Medication Question Answering Grounded in OpenFDA Drug Labels
-# PharmRAG
 
-> **Intelligent Pharmacy Research Assistant powered by RAG (Retrieval-Augmented Generation)**
+**Retrieval-augmented medication question answering, grounded in OpenFDA drug labels.**
 
-A production-ready system that answers medication-related queries using FDA-approved drug labels, combining semantic search with AI-powered response generation.
+![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)
+![FAISS](https://img.shields.io/badge/Vector_search-FAISS-0467DF?style=flat-square)
+![Gemini](https://img.shields.io/badge/LLM-Gemini_2.5_Flash-8E75B2?style=flat-square&logo=googlegemini&logoColor=white)
+![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 
----
+PharmRAG answers everyday medication questions ("Can I take ibuprofen while pregnant?", "What are the side effects of metformin?") using only the text of FDA-approved drug labels. Instead of letting a language model answer from memory, it first finds the relevant label sections, then asks the model to answer from those sections alone and to say so when the labels don't cover the question.
 
-## Features
-
-- **Smart Drug Detection**: Automatically identifies medications mentioned in queries using multi-strategy detection
-- **Advanced Retrieval**: Hybrid search combining FAISS vector similarity, drug-specific filtering, and section prioritization
-- **AI-Powered Responses**: Generates clear, accurate answers using Google's Gemini 2.5 Flash with safety-focused prompts
-- **Interactive UI**: Clean Streamlit interface with real-time query analysis and source tracking
-- **Cross-Encoder Reranking**: Uses MediMaven reranker for improved result relevance
-- **Query Intent Classification**: Automatically detects query type (dosage, side effects, interactions, etc.)
+> **Disclaimer:** PharmRAG is a research project. It is not medical advice and must not be used to make clinical decisions.
 
 ---
 
-## Architecture
+## Why this project
 
-```
-User Query
-    ↓
-┌─────────────────────────────────────────┐
-│  Drug Detection Module                  │
-│  - N-gram extraction                    │
-│  - Token-based matching                 │
-│  - Confidence scoring                   │
-└─────────────────┬───────────────────────┘
-                  ↓
-┌─────────────────────────────────────────┐
-│  Retrieval Pipeline                     │
-│  1. Query Intent Classification         │
-│  2. Semantic Search (FAISS + BGE)       │
-│  3. Drug-Specific Filtering             │
-│  4. Section Priority Boosting           │
-│  5. Cross-Encoder Reranking             │
-└─────────────────┬───────────────────────┘
-                  ↓
-┌─────────────────────────────────────────┐
-│  LLM Generation (Gemini 2.5 Flash)      │
-│  - Context assembly                     │
-│  - Adaptive prompting                   │
-│  - Safety-focused output                │
-└─────────────────┬───────────────────────┘
-                  ↓
-            Final Answer
-```
+General-purpose LLMs can sound confident about drug information while being wrong or out of date. Drug labels are the regulatory source of truth, but they are long and hard to search. PharmRAG connects the two: retrieval brings the right label text to the model, and the prompt keeps the model inside that text.
+
+The project also asks a research question: **do medical-domain embeddings retrieve better evidence than general-purpose ones?** It runs two retrieval pipelines side by side, one with a general embedding model and one with a medical-adapted model, and compares both against an LLM answering with no retrieval at all.
 
 ---
 
-## Quick Start
+## How it works
 
-### Prerequisites
-
-```bash
-Python 3.8+
-CUDA-capable GPU (recommended)
+```mermaid
+flowchart LR
+    Q[User question] --> D[Drug detection]
+    D --> I[Intent classification]
+    I --> R[FAISS vector search<br/>top 250 candidates]
+    R --> F[Drug-aware filtering<br/>+ section boosting]
+    F --> RR[Cross-encoder reranking<br/>top 10 chunks]
+    RR --> G[Gemini 2.5 Flash<br/>grounded answer]
+    G --> A[Answer + cited label sections]
 ```
 
-### Installation
-
-1. **Clone the repository**
-```bash
-git clone https://github.com/yourusername/PharmRAG.git
-cd PharmRAG
-```
-
-2. **Install dependencies**
-```bash
-pip install -r requirements.txt
-```
-
-3. **Download the dataset**
-
-The pre-processed FDA drug labels, embeddings, and FAISS index are available on Google Drive:
-
-**[Download Dataset & Embeddings](https://drive.google.com/your-drive-link-here)**
-
-**Contents:**
-- `embeddings-bge-medical-final-800.npy` (Vector embeddings)
-- `metadata-bge-medical-final-800.jsonl` (Drug label metadata)
-- `index-faiss-ip.bin` (FAISS index for fast retrieval)
-- `best-150-questions.txt` (Evaluation questions)
-
-Extract the downloaded files to your project directory:
-```bash
-mkdir -p embeddings/bge-medical
-# Move downloaded files to embeddings/bge-medical/
-```
-
-4. **Set up environment variables**
-```bash
-export GEMINI_API_KEY="your-api-key-here"
-```
-
-5. **Configure file paths** (in `retrieval_from_rag.py`)
-```python
-EMB_DIR = r"path/to/your/embeddings/bge-medical"
-```
-
-### Running the Application
-
-**Streamlit UI (Recommended)**
-```bash
-streamlit run user_interface.py
-```
-
-**Command Line Interface**
-```bash
-python llm_inference.py
-```
-
-**Retrieval Testing**
-```bash
-python retrieval_from_rag.py
-```
+1. **Drug detection.** Finds the medication(s) named in the question using n-gram, substring and token matching against the label vocabulary.
+2. **Intent classification.** Tags the question as usage, dosage, side effects, interactions, pregnancy or warnings, so the matching label sections can be prioritized.
+3. **Vector search.** Embeds the question and retrieves the 250 nearest label chunks from a FAISS index.
+4. **Filtering and boosting.** Softly filters candidates to the detected drug(s) and boosts sections that match the intent (for example, the *Pregnancy* section for a pregnancy question).
+5. **Reranking.** A medical cross-encoder rescores the remaining candidates and keeps the top 10.
+6. **Grounded generation.** Gemini 2.5 Flash writes the answer from those chunks only, puts warnings and contraindications first, and states clearly when the labels don't contain the answer.
 
 ---
 
-## Project Structure
+## Models
 
-```
-PharmRAG/
-├── drug_detection.py          # Drug name extraction and matching
-├── retrieval_from_rag.py      # FAISS search and reranking pipeline
-├── llm_inference.py           # Gemini integration and prompt engineering
-├── user_interface.py          # Streamlit web application
-├── evaluation.py              # Batch evaluation script
-├── embeddings/
-│   └── bge-medical/
-│       ├── embeddings-bge-medical-final-800.npy    # 800-dim vectors
-│       ├── metadata-bge-medical-final-800.jsonl    # FDA label chunks
-│       └── index-faiss-ip.bin                      # FAISS index
-├── best-150-questions.txt     # Evaluation dataset
-├── requirements.txt           # Python dependencies
-└── README.md
-```
-
-### Dataset Information
-
-**Download Link**: [Google Drive - PharmRAG Dataset](https://drive.google.com/drive/folders/1IIMLzSwf7Kq6W44pcRnjDdSuuJt8bQsm?usp=sharing)
-
-| File | Size | Description |
-|------|------|-------------|
-| `embeddings-bge-medical-final-800.npy` | ~XX MB | BGE-Medical embeddings (768-dim vectors) |
-| `metadata-bge-medical-final-800.jsonl` | ~XX MB | Processed FDA labels with metadata |
-| `index-faiss-ip.bin` | ~XX MB | Pre-built FAISS Inner Product index |
-| `best-150-questions.txt` | ~XX KB | Curated evaluation questions |
-
-**Dataset Statistics:**
-- **Total Chunks**: ~X,XXX FDA label sections
-- **Unique Drugs**: ~XXX medications
-- **Sections Covered**: Indications, Dosage, Warnings, Interactions, Side Effects, etc.
-- **Embedding Model**: `aleynahukmet/bge-medical-small-en-v1.5`
+| Role | Model |
+|---|---|
+| Medical embeddings | [`aleynahukmet/bge-medical-small-en-v1.5`](https://huggingface.co/aleynahukmet/bge-medical-small-en-v1.5) |
+| General embeddings (comparison) | `BAAI/bge-small-en-v1.5` |
+| Reranker | [`dranreb1660/medimaven-reranker-bge-cross-encoder`](https://huggingface.co/dranreb1660/medimaven-reranker-bge-cross-encoder) |
+| Generator | `gemini-2.5-flash` (Google Gemini API) |
 
 ---
 
-## Core Components
+## Data
 
-### 1. Drug Detection (`drug_detection.py`)
+- **Source:** [OpenFDA drug label dataset](https://open.fda.gov/apis/drug/label/)
+- **Scale:** ~100K drug labels, split into section-aware chunks and indexed with FAISS (inner-product similarity)
+- **Prebuilt files** (place them in `embeddings/bge-medical/`):
+  - `embeddings-bge-medical-final-800.npy`: chunk embeddings
+  - `metadata-bge-medical-final-800.jsonl`: chunk text, drug name and label section for each vector
+  - `index-faiss-ip.bin`: FAISS index
 
-Multi-strategy approach for identifying medications in natural language queries:
-
-```python
-# Build comprehensive drug index
-drug_index = build_comprehensive_drug_index(metas)
-
-# Detect drug from query
-detected_drug = detect_drug_from_query_robust(query, drug_index, verbose=True)
-```
-
-**Strategies:**
-- Exact full name matching (highest confidence)
-- Partial substring matching
-- Token-based matching with stopword filtering
-
-### 2. Retrieval Pipeline (`retrieval_from_rag.py`)
-
-Hybrid retrieval combining multiple signals:
-
-```python
-hits = search(
-    query=user_query,
-    index=faiss_index,
-    metas=metadata,
-    tokenizer=tokenizer,
-    model=embedding_model,
-    reranker=reranker,
-    top_k=8,
-    faiss_k=250,
-    drug_index=drug_index
-)
-```
-
-**Key Features:**
-- Query intent classification (7 categories)
-- Section-aware retrieval prioritization
-- Drug-specific boosting (+10.0 for exact matches)
-- MediMaven cross-encoder reranking
-
-### 3. LLM Inference (`llm_inference.py`)
-
-Safety-focused response generation with adaptive prompting:
-
-```python
-response = rag_answer(
-    user_query="What are the side effects of ibuprofen?",
-    few_shot_examples=optional_examples
-)
-```
-
-**Features:**
-- Query-type-specific prompting
-- Critical section prioritization (boxed warnings, contraindications)
-- Structured output formatting (bullets for lists, paragraphs for explanations)
-- Built-in safety guardrails
-
----
-
-## Models Used
-
-| Component | Model | Purpose |
-|-----------|-------|---------|
-| Embedding | `aleynahukmet/bge-medical-small-en-v1.5` | Query/document encoding |
-| Reranker | `dranreb1660/medimaven-reranker-bge-cross-encoder` | Result reranking |
-| LLM | `gemini-2.5-flash` | Response generation |
-
----
-
-## Query Intent Classification
-
-The system automatically detects query intent to prioritize relevant FDA label sections:
-
-| Intent | Example Query | Priority Sections |
-|--------|---------------|-------------------|
-| `usage` | "What is spironolactone used for?" | indications_and_usage, description |
-| `dosage` | "How much Tylenol can I take?" | dosage_and_administration |
-| `side_effects` | "Side effects of ibuprofen?" | adverse_reactions, warnings |
-| `interactions` | "Can I take aspirin with warfarin?" | drug_interactions, warnings |
-| `pregnancy` | "Is Advil safe during pregnancy?" | pregnancy_or_breast_feeding |
-| `warnings` | "What are the warnings for Lipitor?" | boxed_warning, warnings |
+The prebuilt files are too large for the repository. Download them from the [latest release](https://github.com/MujtabaGit56/PharmRAG/releases).
 
 ---
 
 ## Evaluation
 
-Run batch evaluation on 150 test questions:
+PharmRAG was evaluated on 150 consumer-style medication questions (`best-150-questions.txt`), comparing three systems:
+
+1. Gemini with **no retrieval** (ungrounded baseline)
+2. RAG with **general** embeddings (`bge-small`)
+3. RAG with **medical** embeddings (`bge-medical`)
+
+Answers were scored with an **LLM-as-judge rubric** (factuality, safety coverage, clarity) and with **ROUGE** against label text.
+
+**Result:** the medical-embedding pipeline outperformed both the general-embedding pipeline and the ungrounded baseline on every criterion.
+
+<!--
+Add the score table here, for example:
+
+| System | Factuality | Safety coverage | Clarity | ROUGE-L |
+|---|---|---|---|---|
+| Gemini, no retrieval | | | | |
+| RAG + bge-small | | | | |
+| RAG + bge-medical | | | | |
+-->
+
+To reproduce, run `python evaluation.py`. It writes every generated answer to `150-rag-answers.json` for scoring.
+
+### Typical latency
+
+| Stage | Time |
+|---|---|
+| FAISS retrieval | ~200 ms |
+| Reranking | ~500 ms |
+| Generation | ~2–4 s |
+| **End to end** | **~3–5 s per question** |
+
+---
+
+## Getting started
+
+### Requirements
+
+- Python 3.10+
+- A [Google Gemini API key](https://aistudio.google.com/app/apikey)
+- The prebuilt index files (see [Data](#data))
+
+### Install
 
 ```bash
-python evaluation.py
+git clone https://github.com/MujtabaGit56/PharmRAG.git
+cd PharmRAG
+pip install -r requirements.txt
 ```
 
-Generates `150-rag-answers.json` with:
-- Predicted answers
-- Retrieved passages (top-2)
-- Drug identification
-- Metadata for analysis
-
----
-
-## Example Usage
-
-### Via Streamlit UI
-
-1. Enter query: *"What are the contraindications for Amoxicillin?"*
-2. System automatically:
-   - Detects drug: **amoxicillin**
-   - Retrieves relevant FDA sections
-   - Generates safety-focused response
-3. View sources and metadata
-
-### Via Python API
-
-```python
-import llm_inference
-
-# Initialize system
-llm_inference.initialize_rag_system()
-
-# Get answer
-response = llm_inference.rag_answer(
-    user_query="Can I take ibuprofen with aspirin?",
-    few_shot_examples=""  # Optional
-)
-
-print(response)
-```
-
----
-
-## Configuration
-
-### Retrieval Parameters
-
-```python
-TOP_K = 8              # Final results returned
-FAISS_K = 250          # Initial candidates from FAISS
-RERANK_BATCH_SIZE = 32 # Cross-encoder batch size
-```
-
-### Prompt Engineering
-
-Modify `SYSTEM_PROMPT` in `llm_inference.py` to adjust:
-- Output length (default: 6-8 lines)
-- Formatting style (bullets vs paragraphs)
-- Safety emphasis level
-
----
-
-## Safety Features
-
-- **No hallucination**: Answers strictly based on FDA label snippets
-- **Warning prioritization**: Critical sections (boxed warnings, contraindications) always checked
-- **Explicit disclaimer**: Responses clarify when information is unavailable
-- **Safety-first prompting**: Emphasizes warnings and contraindications
-
----
-
-## Data Format
-
-### Metadata Structure (JSONL)
-
-```json
-{
-  "drug_name": "Amoxicillin",
-  "generic_name": "amoxicillin",
-  "brand_name": "Amoxil",
-  "section": "contraindications",
-  "audience": "consumer",
-  "text": "[Drug: Amoxicillin | Section: contraindications] Do not use if..."
-}
-```
-
-### Building Your Own Dataset
-
-If you want to create embeddings from scratch:
-
-1. **Prepare FDA label data** in JSONL format with required fields
-2. **Generate embeddings**:
-```python
-from transformers import AutoTokenizer, AutoModel
-import numpy as np
-
-tokenizer = AutoTokenizer.from_pretrained("aleynahukmet/bge-medical-small-en-v1.5")
-model = AutoModel.from_pretrained("aleynahukmet/bge-medical-small-en-v1.5")
-
-# Encode your text chunks
-embeddings = []
-for chunk in chunks:
-    encoded = tokenizer(chunk, return_tensors="pt", padding=True, truncation=True)
-    with torch.no_grad():
-        output = model(**encoded)
-        embedding = output.last_hidden_state.mean(dim=1)
-    embeddings.append(embedding)
-
-# Save as numpy array
-np.save("embeddings.npy", np.vstack(embeddings))
-```
-
-3. **Build FAISS index**:
-```python
-import faiss
-
-embeddings = np.load("embeddings.npy")
-index = faiss.IndexFlatIP(embeddings.shape[1])  # Inner Product
-faiss.normalize_L2(embeddings)  # Normalize for cosine similarity
-index.add(embeddings)
-faiss.write_index(index, "index-faiss-ip.bin")
-```
-
----
-
-## Dataset Download & Setup
-
-### Option 1: Use Pre-built Dataset (Recommended)
-
-Download from Google Drive and extract:
+### Configure
 
 ```bash
-# Download dataset.zip from Google Drive
-unzip dataset.zip -d embeddings/
-
-# Verify files
-ls embeddings/bge-medical/
-# Should see: embeddings-bge-medical-final-800.npy
-#             metadata-bge-medical-final-800.jsonl
-#             index-faiss-ip.bin
+export GEMINI_API_KEY="your-key-here"        # Windows PowerShell: $env:GEMINI_API_KEY="your-key-here"
 ```
 
-### Option 2: Build from Source FDA Data
-
-If you have raw FDA drug labels:
+By default the index is read from `embeddings/bge-medical/` inside the project. To keep it somewhere else, point `PHARMRAG_EMB_DIR` at that folder:
 
 ```bash
-# Process labels and create chunks
-python preprocess_fda_labels.py --input raw_labels/ --output processed/
+export PHARMRAG_EMB_DIR="/path/to/bge-medical"
+```
 
-# Generate embeddings
-python create_embeddings.py --model bge-medical --input processed/ --output embeddings/
+To run the general-embedding pipeline instead, swap the commented `BGE-GENERAL` block at the top of `retrieval_from_rag.py` for the `BGE-MEDICAL` one.
 
-# Build FAISS index
-python build_index.py --embeddings embeddings/ --output embeddings/
+### Run
+
+```bash
+streamlit run user_interface.py     # web app with query analysis and sources
+python llm_inference.py             # command-line Q&A
+python retrieval_from_rag.py        # test retrieval only, no LLM call
+python evaluation.py                # run the 150-question evaluation
+```
+
+### Retrieval settings
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `FAISS_K` | 250 | Candidates pulled from the vector index |
+| `TOP_K` | 10 (`llm_inference.py`), 8 (`retrieval_from_rag.py`) | Chunks kept after reranking |
+| `RERANK_BATCH_SIZE` | 32 | Batch size for the cross-encoder |
+
+---
+
+## Project structure
+
+```
+PharmRAG/
+├── drug_detection.py         # find drug names in the question
+├── retrieval_from_rag.py     # intent classification, FAISS search, filtering, reranking
+├── llm_inference.py          # grounded prompt + Gemini generation (CLI)
+├── user_interface.py         # Streamlit app
+├── evaluation.py             # 150-question evaluation run
+├── best-150-questions.txt    # evaluation questions
+├── embeddings/
+│   └── bge-medical/          # prebuilt index files (download separately)
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
-## Troubleshooting
+## Safety design
 
-### Common Issues
-
-**CUDA Out of Memory**
-```python
-# Reduce batch size
-RERANK_BATCH_SIZE = 16
-FAISS_K = 150
-```
-
-**Drug Detection Failures**
-```python
-# Enable verbose mode to debug
-detect_drug_from_query_robust(query, drug_index, verbose=True)
-```
-
-**Poor Retrieval Quality**
-- Check if drug index is built correctly
-- Verify embedding file integrity
-- Adjust section priority weights
+- Answers draw only on retrieved FDA label text, not on the model's general knowledge.
+- Warnings, contraindications and boxed warnings are surfaced first.
+- When the retrieved sections don't answer the question, the system says so instead of guessing.
+- Every answer shows the label sections it was based on.
 
 ---
 
-## Performance Metrics
+## Limitations
 
-- **Drug Detection Accuracy**: ~95% on common medications
-- **Retrieval Latency**: ~200ms (FAISS) + ~500ms (reranking)
-- **Generation Latency**: ~2-4s (Gemini 2.5 Flash)
-- **End-to-End**: ~3-5s per query
-
----
-
-## Contributing
-
-Contributions are welcome! Areas for improvement:
-
-- Support for drug-drug interaction queries
-- Multi-drug query handling
-- Conversation memory for follow-up questions
-- PDF export of responses with citations
-- Mobile-responsive UI enhancements
+- Coverage is limited to what is in the FDA labels; it does not include clinical guidelines, newer research or non-US products.
+- Drug detection works best for common medications and may miss misspellings or uncommon brand names.
+- LLM-as-judge scoring is useful for comparing systems but is not a substitute for review by pharmacists or clinicians.
 
 ---
+
+## Author
+
+**Mujtaba Shahid**, MS Artificial Intelligence, NUST
+[LinkedIn](https://linkedin.com/in/mujtabashahid) · [GitHub](https://github.com/MujtabaGit56)
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
+Released under the [MIT License](LICENSE).

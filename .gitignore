@@ -1,0 +1,20 @@
+# Prebuilt index files (download from the GitHub release)
+embeddings/
+*.npy
+*.bin
+
+# Evaluation output
+150-rag-answers.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
